@@ -7,26 +7,18 @@
 
 import SwiftUI
 import SwiftData
-import FoundationModels
 
 struct UpdateExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var expense: Expense
 
-    // AI session
-    private let session = LanguageModelSession {
-        "You are an assistant that classifies expense descriptions into one category."
-    }
-
     @State private var detectedCategory: ExpenseCategory?
     @State private var isClassifying: Bool = false
-
     @State private var hasAppeared: Bool = false
 
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: Expense Name + AI-detected icon
                 Section {
                     HStack(spacing: 10) {
                         TextField("Expense name", text: $expense.name)
@@ -36,7 +28,7 @@ struct UpdateExpenseView: View {
                         trailingIcon
                     }
                 } footer: {
-                    if let category = detectedCategory, !expense.name.isEmpty {
+                    if let category = displayCategory {
                         Text("Detected as **\(category.rawValue)**")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -56,16 +48,18 @@ struct UpdateExpenseView: View {
             .navigationTitle("Update Expense")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                // Pre-populate category from stored symbol — no AI call
                 detectedCategory = ExpenseCategory.allCases.first {
                     $0.systemImage == expense.expenseSymbol
                 }
             }
             .task(id: expense.name) {
+                // Skip the very first run so no AI fires on appear
                 if !hasAppeared {
                     hasAppeared = true
                     return
                 }
-                await detectCategory(for: expense.name)
+                await classify(expense.name)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -75,7 +69,15 @@ struct UpdateExpenseView: View {
         }
     }
 
-    // MARK: - Trailing Icon (right of name field)
+    // MARK: - Display Helpers
+
+    private var isNameEmpty: Bool {
+        expense.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var displayCategory: ExpenseCategory? {
+        isNameEmpty ? nil : detectedCategory
+    }
 
     @ViewBuilder
     private var trailingIcon: some View {
@@ -83,7 +85,7 @@ struct UpdateExpenseView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 28, height: 28)
-        } else if let category = detectedCategory {
+        } else if let category = displayCategory {
             Image(systemName: category.systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
@@ -94,9 +96,9 @@ struct UpdateExpenseView: View {
         }
     }
 
-    // MARK: - AI Classification
+    // MARK: - Classification
 
-    private func detectCategory(for name: String) async {
+    private func classify(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmed.isEmpty else {
@@ -105,51 +107,19 @@ struct UpdateExpenseView: View {
             return
         }
 
-        // Debounce — 400ms
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        if Task.isCancelled { return }
-
         isClassifying = true
         defer { isClassifying = false }
 
-        // Fall back to keyword classifier if AI is unavailable
-        guard SystemLanguageModel.default.availability == .available else {
-            apply(keywordFallback(for: trimmed))
-            return
-        }
+        let category = await ExpenseClassifier.shared.classify(name)
+        if Task.isCancelled { return }
 
-        do {
-            let response = try await session.respond(
-                to: "Classify this expense: \(trimmed)",
-                generating: ExpenseCategory.self
-            )
-            apply(response.content)
-        } catch {
-            apply(keywordFallback(for: trimmed))
-        }
-    }
-
-    /// Apply the detected category to the model + local state.
-    /// Also persists the new symbol/tint onto the Expense.
-    private func apply(_ category: ExpenseCategory) {
         withAnimation(.easeInOut(duration: 0.2)) {
             detectedCategory = category
-            expense.expenseSymbol = category.systemImage
-            expense.expenseTintHex = category.tintHex
+            if let category {
+                expense.expenseSymbol = category.systemImage
+                expense.expenseTintHex = category.tintHex
+            }
         }
-    }
-
-    /// Simple keyword classifier used when on-device AI is unavailable.
-    private func keywordFallback(for name: String) -> ExpenseCategory {
-        let lower = name.lowercased()
-        if lower.contains("food") || lower.contains("grocery") || lower.contains("restaurant") || lower.contains("coffee") || lower.contains("dinner") { return .food }
-        if lower.contains("movie") || lower.contains("game") || lower.contains("concert") { return .entertainment }
-        if lower.contains("fuel") || lower.contains("petrol") || lower.contains("uber") || lower.contains("cab") { return .transport }
-        if lower.contains("bill") || lower.contains("electric") || lower.contains("water") || lower.contains("rent") { return .bills }
-        if lower.contains("doctor") || lower.contains("medicine") || lower.contains("hospital") { return .health }
-        if lower.contains("flight") || lower.contains("hotel") || lower.contains("trip") || lower.contains("travel") { return .travel }
-        if lower.contains("shopping") || lower.contains("cloth") || lower.contains("amazon") || lower.contains("mall") { return .shopping }
-        return .other
     }
 }
 

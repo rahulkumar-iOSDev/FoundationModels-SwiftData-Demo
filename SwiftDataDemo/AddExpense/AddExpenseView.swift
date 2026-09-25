@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import FoundationModels
 
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
@@ -20,14 +19,9 @@ struct AddExpenseView: View {
     @State private var detectedCategory: ExpenseCategory?
     @State private var isClassifying: Bool = false
 
-    private let session = LanguageModelSession {
-        "You are an assistant that classifies expense descriptions into one category."
-    }
-
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: Expense Name + AI-detected icon
                 Section {
                     HStack(spacing: 10) {
                         TextField("Expense name", text: $expenseName)
@@ -37,7 +31,7 @@ struct AddExpenseView: View {
                         trailingIcon
                     }
                 } footer: {
-                    if let category = detectedCategory, !expenseName.isEmpty  {
+                    if let category = displayCategory {
                         Text("Detected as **\(category.rawValue)**")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -46,13 +40,18 @@ struct AddExpenseView: View {
 
                 DatePicker("Date", selection: $date, displayedComponents: .date)
 
-                CurrencyAmountField(amount: $amount)
-                    .keyboardType(.decimalPad)
+                HStack(spacing: 4) {
+                    Text("₹")
+                        .foregroundStyle(.secondary)
+                    TextField("Amount", text: $amount)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.leading)
+                }
             }
             .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
             .task(id: expenseName) {
-                await detectCategory(for: expenseName)
+                await classify(expenseName)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -66,7 +65,15 @@ struct AddExpenseView: View {
         }
     }
 
-    // MARK: - Trailing Icon (right of text field)
+    // MARK: - Display Helpers
+
+    private var isNameEmpty: Bool {
+        expenseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var displayCategory: ExpenseCategory? {
+        isNameEmpty ? nil : detectedCategory
+    }
 
     @ViewBuilder
     private var trailingIcon: some View {
@@ -74,22 +81,20 @@ struct AddExpenseView: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 28, height: 28)
-        } else if let category = detectedCategory {
+        } else if let category = displayCategory {
             Image(systemName: category.systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(
-                    Circle().fill(category.tint.gradient)
-                )
+                .background(Circle().fill(category.tint.gradient))
                 .transition(.scale.combined(with: .opacity))
                 .accessibilityLabel("Detected category: \(category.rawValue)")
         }
     }
 
-    // MARK: - AI Classification
+    // MARK: - Classification
 
-    private func detectCategory(for name: String) async {
+    private func classify(_ name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmed.isEmpty else {
@@ -98,54 +103,21 @@ struct AddExpenseView: View {
             return
         }
 
-        // Debounce: wait 400ms before hitting the model
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        if Task.isCancelled { return }
-
         isClassifying = true
         defer { isClassifying = false }
 
-        // Availability check — fall back to keyword heuristic if AI is off
-        guard SystemLanguageModel.default.availability == .available else {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                detectedCategory = keywordFallback(for: trimmed)
-            }
-            return
-        }
+        let category = await ExpenseClassifier.shared.classify(name)
+        if Task.isCancelled { return }
 
-        do {
-            let response = try await session.respond(
-                to: "Classify this expense: \(trimmed)",
-                generating: ExpenseCategory.self
-            )
-            withAnimation(.easeInOut(duration: 0.2)) {
-                detectedCategory = response.content
-            }
-        } catch {
-            withAnimation {
-                detectedCategory = keywordFallback(for: trimmed)
-            }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            detectedCategory = category
         }
-    }
-
-    /// Simple keyword classifier used when on-device AI is unavailable.
-    private func keywordFallback(for name: String) -> ExpenseCategory {
-        let lower = name.lowercased()
-        if lower.contains("food") || lower.contains("grocery") || lower.contains("restaurant") || lower.contains("coffee") || lower.contains("dinner") { return .food }
-        if lower.contains("movie") || lower.contains("game") || lower.contains("concert") { return .entertainment }
-        if lower.contains("fuel") || lower.contains("petrol") || lower.contains("uber") || lower.contains("cab") { return .transport }
-        if lower.contains("bill") || lower.contains("electric") || lower.contains("water") || lower.contains("rent") { return .bills }
-        if lower.contains("doctor") || lower.contains("medicine") || lower.contains("hospital") { return .health }
-        if lower.contains("flight") || lower.contains("hotel") || lower.contains("trip") || lower.contains("travel") { return .travel }
-        if lower.contains("shopping") || lower.contains("cloth") || lower.contains("amazon") || lower.contains("mall") { return .shopping }
-        return .other
     }
 
     // MARK: - Save
 
     private func saveExpense() {
         guard let amountValue = Double(amount) else { return }
-
         let symbol = detectedCategory?.systemImage ?? "creditcard.fill"
         let tintHex = detectedCategory?.tintHex ?? "007AFF"
 
@@ -160,8 +132,6 @@ struct AddExpenseView: View {
         dismiss()
     }
 }
-
-// MARK: - Preview
 
 #Preview {
     AddExpenseView()
