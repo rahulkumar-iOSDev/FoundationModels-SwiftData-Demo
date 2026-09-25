@@ -11,64 +11,55 @@ import SwiftData
 
 struct ExpenseListView: View {
     @Environment(\.modelContext) private var context
-    @State private var isShowingAddExpenseSheet: Bool = false
+    @State private var viewModel = ExpenseListViewModel()
     @Query var expenses: [Expense] = []
-    @State private var expenseToEdit: Expense?
-    
-    @State private var sortOption: ExpenseSortOption = .dateNewest
-    @State private var isShowingSortOptions: Bool = false
-    
+
     private var sortedExpenses: [Expense] {
-        switch sortOption {
-        case .dateNewest:       return expenses.sorted { $0.date > $1.date }
-        case .dateOldest:       return expenses.sorted { $0.date < $1.date }
-        case .amountHighToLow:  return expenses.sorted { $0.amount > $1.amount }
-        case .amountLowToHigh:  return expenses.sorted { $0.amount < $1.amount }
-        }
+        viewModel.sortedExpenses(from: expenses)
     }
-    
+
     var body: some View {
         NavigationStack {
             VStack {
                 if expenses.isEmpty {
-                    EmptyListView(isShowingAddExpenseSheet: $isShowingAddExpenseSheet)
+                    EmptyListView(isShowingAddExpenseSheet: $viewModel.isShowingAddExpenseSheet)
                         .offset(y: -60)
                 } else {
                     List {
                         ForEach(sortedExpenses) { expense in
                             ExpenseCell(expense: expense)
                                 .onTapGesture {
-                                    expenseToEdit = expense
+                                    viewModel.editExpense(expense)
                                 }
                         }
                         .onDelete { indexSet in
-                            deleteExpense(at: indexSet)
+                            viewModel.deleteExpense(context: context, from: sortedExpenses, at: indexSet)
                         }
                     }
                 }
             }
-            .sheet(isPresented: $isShowingAddExpenseSheet) {
+            .sheet(isPresented: $viewModel.isShowingAddExpenseSheet) {
                 AddExpenseView()
             }
-            .sheet(item: $expenseToEdit) { expense in
+            .sheet(item: $viewModel.expenseToEdit) { expense in
                 UpdateExpenseView(expense: expense)
             }
             .sortOptionsSheet(
-                isPresented: $isShowingSortOptions,
-                sortOption: $sortOption
+                isPresented: $viewModel.isShowingSortOptions,
+                sortOption: $viewModel.sortOption
             )
             .toolbar {
                 if !expenses.isEmpty {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         if expenses.count >= 2 {
                             Button {
-                                isShowingSortOptions = true
+                                viewModel.showSortOptions()
                             } label: {
                                 Image(systemName: "arrow.up.arrow.down")
                             }
                         }
                         Button {
-                            isShowingAddExpenseSheet = true
+                            viewModel.showAddExpenseSheet()
                         } label: {
                             Image(systemName: "plus")
                         }
@@ -76,18 +67,18 @@ struct ExpenseListView: View {
                 }
             }
             .navigationTitle("Expenses")
-        }
-    }
-    
-    private func deleteExpense(at offsets: IndexSet) {
-        for index in offsets {
-            guard sortedExpenses.indices.contains(index) else { continue }
-            context.delete(sortedExpenses[index])
-        }
-        do {
-            try context.save()
-        } catch {
-            print("Failed to delete expense(s): \(error.localizedDescription)")
+            .alert(
+                "Couldn't Delete",
+                isPresented: Binding(
+                    get: { viewModel.errorMessage != nil },
+                    set: { if !$0 { viewModel.errorMessage = nil } }
+                ),
+                presenting: viewModel.errorMessage
+            ) { _ in
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: { message in
+                Text(message)
+            }
         }
     }
 }
@@ -165,15 +156,14 @@ struct ExpenseCell: View {
 private struct SortOptionsSheet: View {
     @Binding var sortOption: ExpenseSortOption
     @Binding var isPresented: Bool
-    
-    /// Content-driven height — snug fit, no empty space, no scrolling.
+
     private var sheetHeight: CGFloat {
-        let rowHeight: CGFloat = 44     // one List row
-        let navBar: CGFloat = 56        // inline nav bar + Done button
-        let safeArea: CGFloat = 34      // home indicator area
+        let rowHeight: CGFloat = 44
+        let navBar: CGFloat = 56
+        let safeArea: CGFloat = 34
         return CGFloat(ExpenseSortOption.allCases.count) * rowHeight + navBar + safeArea
     }
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -217,7 +207,7 @@ private struct SortOptionsSheet: View {
 private struct SortOptionsSheetModifier: ViewModifier {
     @Binding var isPresented: Bool
     @Binding var sortOption: ExpenseSortOption
-    
+
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $isPresented) {
@@ -232,7 +222,6 @@ private struct SortOptionsSheetModifier: ViewModifier {
 // MARK: - View Extension
 
 extension View {
-    /// Presents the expense sort options sheet.
     func sortOptionsSheet(
         isPresented: Binding<Bool>,
         sortOption: Binding<ExpenseSortOption>

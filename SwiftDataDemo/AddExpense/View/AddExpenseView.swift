@@ -1,28 +1,24 @@
 //
-//  UpdateExpense.swift
+//  AddExpenseView.swift
 //  SwiftDataDemo
 //
-//  Created by Rahul Kumar on 25/09/26.
+//  Created by Rahul Kumar on 23/09/26.
 //
 
 import SwiftUI
 import SwiftData
 
-struct UpdateExpenseView: View {
+struct AddExpenseView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @State private var viewModel: UpdateExpenseViewModel
-
-    init(expense: Expense) {
-        _viewModel = State(initialValue: UpdateExpenseViewModel(expense: expense))
-    }
+    @State private var viewModel = AddExpenseViewModel()
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     HStack(spacing: 10) {
-                        TextField("Expense name", text: $viewModel.name)
+                        TextField("Expense name", text: $viewModel.expenseName)
                             .textInputAutocapitalization(.words)
                             .autocorrectionDisabled(false)
 
@@ -46,21 +42,18 @@ struct UpdateExpenseView: View {
                         .multilineTextAlignment(.leading)
                 }
             }
-            .navigationTitle("Update Expense")
+            .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                viewModel.onAppear()
-            }
-            .task(id: viewModel.name) {
-                await viewModel.classify(viewModel.name)
+            .task(id: viewModel.expenseName) {
+                await viewModel.classify(viewModel.expenseName)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        if viewModel.saveChanges(context: context) {
+                    Button("Save") {
+                        if viewModel.saveExpense(context: context) {
                             dismiss()
                         }
                     }
@@ -101,12 +94,5 @@ struct UpdateExpenseView: View {
 }
 
 #Preview {
-    let mockExpense = Expense(
-        name: "Lunch",
-        date: Date(),
-        amount: 500,
-        expenseSymbol: "fork.knife",
-        expenseTintHex: "FF9500"
-    )
-    return UpdateExpenseView(expense: mockExpense)
+    return AddExpenseView()
 }
