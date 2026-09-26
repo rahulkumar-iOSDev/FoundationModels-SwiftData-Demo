@@ -12,6 +12,7 @@ import SwiftData
 struct ExpenseListView: View {
     @Environment(\.modelContext) private var context
     @State private var viewModel = ExpenseListViewModel()
+    @Binding var isDarkMode: Bool
     @Query var expenses: [Expense] = []
 
     private var sortedExpenses: [Expense] {
@@ -51,8 +52,17 @@ struct ExpenseListView: View {
                 )
             }
             .toolbar {
-                if !expenses.isEmpty {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        isDarkMode.toggle()
+                    } label: {
+                        Image(systemName: isDarkMode ? "sun.max" : "moon")
+                    }
+                    .accessibilityLabel(
+                        isDarkMode ? "Switch to light appearance" : "Switch to dark appearance"
+                    )
+
+                    if !expenses.isEmpty {
                         if expenses.count >= 2 {
                             Button {
                                 viewModel.showSortOptions()
@@ -88,5 +98,5 @@ struct ExpenseListView: View {
 // MARK: - Preview
 
 #Preview {
-    ExpenseListView()
+    ExpenseListView(isDarkMode: .constant(false))
 }
