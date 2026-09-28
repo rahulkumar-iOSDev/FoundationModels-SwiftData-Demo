@@ -23,6 +23,8 @@ final class UpdateExpenseViewModel {
     var detectedCategory: ExpenseCategory?
     var isClassifying: Bool = false
     private var hasAppeared: Bool = false
+    
+    private var currentClassificationID: UUID?
 
     // MARK: - Validation State
     var errorMessage: String?
@@ -64,27 +66,27 @@ final class UpdateExpenseViewModel {
     // MARK: - Classification
 
     func classify(_ name: String) async {
-        // Skip the very first run so no AI fires on initial appear/task
-        if !hasAppeared {
-            hasAppeared = true
-            return
-        }
-
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        
         guard !trimmed.isEmpty else {
+            currentClassificationID = nil
             detectedCategory = nil
             isClassifying = false
             return
         }
-
+        
+        let requestID = UUID()
+        currentClassificationID = requestID
         isClassifying = true
-        defer { isClassifying = false }
-
-        let category = await ExpenseClassifier.shared.classify(name)
-        if Task.isCancelled { return }
-
+        
+        // ExpenseClassifier already debounces internally before doing real work.
+        let category = await ExpenseClassifier.shared.classify(trimmed)
+        
+        // A newer request has started since this one began — discard this result entirely.
+        guard requestID == currentClassificationID else { return }
+        
         detectedCategory = category
+        isClassifying = false
     }
 
     // MARK: - Save
