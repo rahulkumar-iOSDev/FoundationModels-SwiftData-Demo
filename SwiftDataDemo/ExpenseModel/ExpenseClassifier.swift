@@ -75,17 +75,110 @@ final class ExpenseClassifier {
     }
 
     // MARK: - Fallback
-
     /// Simple keyword-based classifier used when on-device AI is unavailable.
+    /// Order matters: more specific categories are checked before broader/overlapping ones.
     static func keywordFallback(for name: String) -> ExpenseCategory {
         let lower = name.lowercased()
-        if lower.contains("food") || lower.contains("grocery") || lower.contains("restaurant") || lower.contains("coffee") || lower.contains("dinner") { return .food }
-        if lower.contains("movie") || lower.contains("game") || lower.contains("concert") { return .entertainment }
-        if lower.contains("fuel") || lower.contains("petrol") || lower.contains("uber") || lower.contains("cab") { return .transport }
-        if lower.contains("bill") || lower.contains("electric") || lower.contains("water") || lower.contains("rent") { return .bills }
-        if lower.contains("doctor") || lower.contains("medicine") || lower.contains("hospital") { return .health }
-        if lower.contains("flight") || lower.contains("hotel") || lower.contains("trip") || lower.contains("travel") { return .travel }
-        if lower.contains("shopping") || lower.contains("cloth") || lower.contains("amazon") || lower.contains("mall") { return .shopping }
+
+        func matches(_ keywords: [String]) -> Bool {
+            keywords.contains { lower.contains($0) }
+        }
+        // MARK: Specific / narrow categories first (avoid being swallowed by broader ones)
+
+        if matches(["coffee", "cafe", "starbucks", "tea", "chai", "snack", "bakery"]) {
+            return .coffee
+        }
+        if matches(["grocery", "groceries", "supermarket", "vegetable", "fruits", "milk", "bigbasket", "blinkit", "zepto", "dmart"]) {
+            return .groceries
+        }
+        if matches(["restaurant", "food", "dinner", "lunch", "breakfast", "swiggy", "zomato", "pizza", "burger", "dining"]) {
+            return .food
+        }
+        if matches(["alcohol", "beer", "wine", "whisky", "vodka", "bar", "pub", "brewery", "liquor"]) {
+            return .alcoholBars
+        }
+
+        if matches(["fuel", "petrol", "diesel", "gas station", "cng"]) {
+            return .fuel
+        }
+        if matches(["uber", "ola", "cab", "taxi", "bus", "metro", "train ticket", "rickshaw", "auto", "parking", "toll"]) {
+            return .transport
+        }
+        if matches(["flight", "airfare", "airline", "vacation", "trip", "tour", "visa fee"]) {
+            return .travel
+        }
+        if matches(["hotel", "hostel", "airbnb", "resort", "stay", "lodging"]) {
+            return .travelStay
+        }
+
+        if matches(["electronics", "laptop", "mobile phone", "smartphone", "gadget", "charger", "earphone", "headphone", "camera", "tv", "television"]) {
+            return .electronics
+        }
+        if matches(["furniture", "sofa", "mattress", "wardrobe", "decor", "curtain", "home appliance", "kitchenware"]) {
+            return .homeAndFurniture
+        }
+        if matches(["amazon", "flipkart", "myntra", "mall", "shopping", "clothes", "clothing", "shoes", "apparel", "accessories"]) {
+            return .shopping
+        }
+
+        if matches(["rent", "landlord", "lease", "maintenance charge", "society fee"]) {
+            return .rent
+        }
+        if matches(["electricity", "electric bill", "water bill", "gas bill", "utility", "utilities"]) {
+            return .bills
+        }
+        if matches(["mobile recharge", "internet bill", "broadband", "wifi bill", "airtel", "jio", "vodafone", "data plan"]) {
+            return .mobileInternet
+        }
+        if matches(["subscription", "netflix", "spotify", "prime video", "hotstar", "youtube premium", "membership"]) {
+            return .subscriptions
+        }
+
+        if matches(["doctor", "hospital", "medicine", "pharmacy", "clinic", "surgery", "dentist", "diagnos"]) {
+            return .health
+        }
+        if matches(["gym", "yoga", "fitness", "workout", "personal trainer", "sports club"]) {
+            return .fitness
+        }
+        if matches(["salon", "haircut", "spa", "parlour", "cosmetics", "skincare", "grooming"]) {
+            return .personalCare
+        }
+
+        if matches(["school fee", "college fee", "tuition", "course", "exam fee", "books", "education", "training"]) {
+            return .education
+        }
+        if matches(["daycare", "babysitter", "kids", "school supplies", "toys", "family outing"]) {
+            return .kidsAndFamily
+        }
+        if matches(["pet", "vet", "dog food", "cat food", "grooming pet", "pet store"]) {
+            return .pets
+        }
+
+        if matches(["insurance", "premium", "policy"]) {
+            return .insurance
+        }
+        if matches(["mutual fund", "sip", "stock", "investment", "fd", "fixed deposit", "shares", "crypto"]) {
+            return .investment
+        }
+        if matches(["emi", "loan", "installment", "credit card bill", "repayment"]) {
+            return .loanEMI
+        }
+        if matches(["bank fee", "atm charge", "service charge", "penalty", "late fee"]) {
+            return .bankFees
+        }
+        if matches(["tax", "gst", "income tax", "tds"]) {
+            return .taxes
+        }
+        if matches(["gift", "donation", "charity", "wedding gift", "birthday gift"]) {
+            return .giftsDonations
+        }
+
+        if matches(["office", "stationery", "printer", "coworking", "work supplies", "conference"]) {
+            return .officeWork
+        }
+        if matches(["movie", "cinema", "game", "concert", "netflix ticket", "amusement", "event ticket", "streaming"]) {
+            return .entertainment
+        }
         return .other
     }
 }

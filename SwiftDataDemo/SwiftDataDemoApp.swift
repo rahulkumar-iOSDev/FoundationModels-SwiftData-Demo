@@ -11,6 +11,8 @@ import SwiftData
 @main
 struct SwiftDataDemoApp: App {
 
+    @AppStorage("appAppearanceIsDarkMode") private var isDarkMode = false
+
     let container: ModelContainer = {
         let schema = Schema([Expense.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -27,7 +29,8 @@ struct SwiftDataDemoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ExpenseListView()
+            ExpenseListView(isDarkMode: $isDarkMode)
+                .preferredColorScheme(isDarkMode ? .dark : .light)
         }
         .modelContainer(container)
     }

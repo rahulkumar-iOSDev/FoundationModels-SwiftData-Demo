@@ -9,38 +9,39 @@ import SwiftUI
 import SwiftData
 
 struct UpdateExpenseView: View {
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Bindable var expense: Expense
+    @State private var viewModel: UpdateExpenseViewModel
 
-    @State private var detectedCategory: ExpenseCategory?
-    @State private var isClassifying: Bool = false
-    @State private var hasAppeared: Bool = false
+    init(expense: Expense) {
+        _viewModel = State(initialValue: UpdateExpenseViewModel(expense: expense))
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     HStack(spacing: 10) {
-                        TextField("Expense name", text: $expense.name)
+                        TextField("Expense name", text: $viewModel.name)
                             .textInputAutocapitalization(.words)
                             .autocorrectionDisabled(false)
 
                         trailingIcon
                     }
                 } footer: {
-                    if let category = displayCategory {
+                    if let category = viewModel.displayCategory {
                         Text("Detected as **\(category.rawValue)**")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                DatePicker("Date", selection: $expense.date, displayedComponents: .date)
+                DatePicker("Date", selection: $viewModel.date, displayedComponents: .date)
 
                 HStack(spacing: 4) {
                     Text("₹")
                         .foregroundStyle(.secondary)
-                    TextField("Amount", value: $expense.amount, format: .number)
+                    TextField("Amount", text: $viewModel.amount)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.leading)
                 }
@@ -48,44 +49,46 @@ struct UpdateExpenseView: View {
             .navigationTitle("Update Expense")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                // Pre-populate category from stored symbol — no AI call
-                detectedCategory = ExpenseCategory.allCases.first {
-                    $0.systemImage == expense.expenseSymbol
-                }
+                viewModel.onAppear()
             }
-            .task(id: expense.name) {
-                // Skip the very first run so no AI fires on appear
-                if !hasAppeared {
-                    hasAppeared = true
-                    return
-                }
-                await classify(expense.name)
+            .task(id: viewModel.name) {
+                await viewModel.classify(viewModel.name)
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        if viewModel.saveChanges(context: context) {
+                            dismiss()
+                        }
+                    }
+                    .disabled(viewModel.isSaveDisabled)
+                }
+            }
+            .alert(
+                "Couldn't Save",
+                isPresented: Binding(
+                    get: { viewModel.errorMessage != nil },
+                    set: { if !$0 { viewModel.errorMessage = nil } }
+                ),
+                presenting: viewModel.errorMessage
+            ) { _ in
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: { message in
+                Text(message)
             }
         }
     }
 
-    // MARK: - Display Helpers
-
-    private var isNameEmpty: Bool {
-        expense.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var displayCategory: ExpenseCategory? {
-        isNameEmpty ? nil : detectedCategory
-    }
-
     @ViewBuilder
     private var trailingIcon: some View {
-        if isClassifying {
+        if viewModel.isClassifying {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 28, height: 28)
-        } else if let category = displayCategory {
+        } else if let category = viewModel.displayCategory {
             Image(systemName: category.systemImage)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
@@ -93,32 +96,6 @@ struct UpdateExpenseView: View {
                 .background(Circle().fill(category.tint.gradient))
                 .transition(.scale.combined(with: .opacity))
                 .accessibilityLabel("Detected category: \(category.rawValue)")
-        }
-    }
-
-    // MARK: - Classification
-
-    private func classify(_ name: String) async {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmed.isEmpty else {
-            detectedCategory = nil
-            isClassifying = false
-            return
-        }
-
-        isClassifying = true
-        defer { isClassifying = false }
-
-        let category = await ExpenseClassifier.shared.classify(name)
-        if Task.isCancelled { return }
-
-        withAnimation(.easeInOut(duration: 0.2)) {
-            detectedCategory = category
-            if let category {
-                expense.expenseSymbol = category.systemImage
-                expense.expenseTintHex = category.tintHex
-            }
         }
     }
 }
